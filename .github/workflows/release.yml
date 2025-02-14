@@ -67,6 +67,7 @@ jobs:
         -p:GenerateDocumentationFile=false \
         -p:PublishDocumentationFiles=false \
         -p:PublishReferencesDocumentationFiles=false
+        -p:GITHUB_ACTIONS=true
 
     # Copy 'libleveldb' library file
     - name: Native Content (neo-cli)
@@ -92,6 +93,7 @@ jobs:
         -p:TieredCompilationQuickJitForLoops=false \
         -p:TieredPGO=true \
         -p:GenerateDocumentationFile=false
+        -p:GITHUB_ACTIONS=true
 
     # Remove unnecessary files from the LevelDBStore plugin output
     - name: Remove files (junk)
