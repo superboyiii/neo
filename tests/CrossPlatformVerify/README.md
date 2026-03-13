@@ -1,6 +1,6 @@
 # Cross-Platform Verify (PR #4449)
 
-Run with the **same seed** on Windows and Linux, then compare the output to verify that `VerifySignature`, `VerifyWithEd25519`, and `VerifyWithECDsa` behave identically on both platforms.
+Run with the **same seed** on Windows, Linux, and macOS, then compare the output to verify that `VerifySignature`, `VerifyWithEd25519`, and `VerifyWithECDsa` behave identically on all platforms.
 
 ## Usage
 
@@ -19,6 +19,13 @@ chmod +x run_cross_platform_verify.sh
 ./run_cross_platform_verify.sh 12345 results_linux.txt
 ```
 
+**macOS:**
+```bash
+cd tests/CrossPlatformVerify
+chmod +x run_cross_platform_verify_mac.sh
+./run_cross_platform_verify_mac.sh 12345 results_mac.txt
+```
+
 ### 2. Direct dotnet run (no output file)
 
 ```bash
@@ -27,14 +34,20 @@ dotnet run -- 12345
 ```
 
 - The first argument is the **seed** (integer); default is `12345` if omitted.
-- The same seed produces the same random messages and keys, so output from Windows and Linux with the same seed should match.
+- The same seed produces the same random messages and keys, so output from all platforms with the same seed should match.
 
 ### 3. Compare results
 
-After saving output from both systems to files, compare with diff:
+After saving output from each system to files, compare with diff:
 
 ```bash
+# Two-way
 diff results_windows.txt results_linux.txt
+diff results_linux.txt results_mac.txt
+diff results_windows.txt results_mac.txt
+
+# Or compare all three (no output = all identical)
+diff results_windows.txt results_linux.txt && diff results_linux.txt results_mac.txt
 ```
 
 - No output means the files are identical.
