@@ -178,8 +178,9 @@ namespace Neo.SmartContract.Manifest
         /// </summary>
         /// <param name="limits">The <see cref="ExecutionEngineLimits"/> used for test serialization.</param>
         /// <param name="hash">The hash of the contract.</param>
+        /// <param name="useLegacyVerify"><see langword="true"/> to keep pre-Gorgon group signature verification semantics.</param>
         /// <returns><see langword="true"/> if the manifest is valid; otherwise, <see langword="false"/>.</returns>
-        public bool IsValid(ExecutionEngineLimits limits, UInt160 hash)
+        public bool IsValid(ExecutionEngineLimits limits, UInt160 hash, bool useLegacyVerify = false)
         {
             // Ensure that is serializable
             try
@@ -191,7 +192,7 @@ namespace Neo.SmartContract.Manifest
                 return false;
             }
             // Check groups
-            return Groups.All(u => u.IsValid(hash));
+            return Groups.All(u => u.IsValid(hash, useLegacyVerify));
         }
     }
 }
