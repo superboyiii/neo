@@ -227,6 +227,20 @@ namespace Neo.Cryptography
         {
             if (signature.Length != 64)
                 throw new FormatException("Signature size should be 64 bytes.");
+            // Use fast path (cached .NET ECDsa) for common case to avoid ~10x slowdown from BouncyCastle-only path (PR 4449 regression).
+            // On exception (e.g. invalid pubkey), return false to keep consistent cross-platform behavior (issue #4316).
+            if (hashAlgorithm == HashAlgorithm.SHA256 && !(s_isOSX && pubkey.Curve == ECC.ECCurve.Secp256k1))
+            {
+                try
+                {
+                    var ecdsa = CreateECDsa(pubkey);
+                    return ecdsa.VerifyData(message, signature, HashAlgorithmName.SHA256);
+                }
+                catch
+                {
+                    return false;
+                }
+            }
             return VerifySignatureInternal(message, signature, pubkey, hashAlgorithm);
         }
         /// <summary>
