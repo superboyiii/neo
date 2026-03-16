@@ -199,6 +199,10 @@ namespace Neo.Cryptography
             {
                 return VerifySignatureInternal(message, signature, pubkey, hashAlgorithm);
             }
+            catch (CryptographicException)
+            {
+                return false;
+            }
         }
 
         internal static bool VerifySignatureLegacy(ReadOnlySpan<byte> message, ReadOnlySpan<byte> signature, ECPoint pubkey, HashAlgorithm hashAlgorithm = HashAlgorithm.SHA256)
