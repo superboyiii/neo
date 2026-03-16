@@ -75,6 +75,13 @@ namespace Neo.SmartContract.Manifest
             return Crypto.VerifySignature(hash.ToArray(), Signature, PubKey);
         }
 
+        internal bool IsValid(UInt160 hash, bool useLegacyVerify)
+        {
+            return useLegacyVerify
+                ? Crypto.VerifySignatureLegacy(hash.ToArray(), Signature, PubKey)
+                : Crypto.VerifySignature(hash.ToArray(), Signature, PubKey);
+        }
+
         /// <summary>
         /// Converts the group to a JSON object.
         /// </summary>

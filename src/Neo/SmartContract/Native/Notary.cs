@@ -131,7 +131,10 @@ namespace Neo.SmartContract.Native
             }
             var notaries = GetNotaryNodes(engine.SnapshotCache);
             var hash = tx.GetSignData(engine.GetNetwork());
-            return notaries.Any(n => Crypto.VerifySignature(hash, signature, n));
+            if (engine.IsHardforkEnabled(Hardfork.HF_Gorgon))
+                return notaries.Any(n => Crypto.VerifySignature(hash, signature, n));
+
+            return notaries.Any(n => Crypto.VerifySignatureLegacy(hash, signature, n));
         }
 
         /// <summary>

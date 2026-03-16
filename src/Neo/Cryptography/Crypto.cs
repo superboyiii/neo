@@ -187,11 +187,28 @@ namespace Neo.Cryptography
                 return VerifySignatureInternal(message, signature, pubkey, hashAlgorithm);
             }
 
-            var ecdsa = CreateECDsa(pubkey);
-            var hashAlg =
-                hashAlgorithm == HashAlgorithm.SHA256 ? HashAlgorithmName.SHA256 :
-                throw new NotSupportedException($"The hash algorithm {nameof(hashAlgorithm)} is not supported.");
-            return ecdsa.VerifyData(message, signature, hashAlg);
+            try
+            {
+                var ecdsa = CreateECDsa(pubkey);
+                var hashAlg =
+                    hashAlgorithm == HashAlgorithm.SHA256 ? HashAlgorithmName.SHA256 :
+                    throw new NotSupportedException($"The hash algorithm {nameof(hashAlgorithm)} is not supported.");
+                return ecdsa.VerifyData(message, signature, hashAlg);
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return VerifySignatureInternal(message, signature, pubkey, hashAlgorithm);
+            }
+        }
+
+        internal static bool VerifySignatureLegacy(ReadOnlySpan<byte> message, ReadOnlySpan<byte> signature, ECPoint pubkey, HashAlgorithm hashAlgorithm = HashAlgorithm.SHA256)
+        {
+            return VerifySignatureV0(message, signature, pubkey, hashAlgorithm);
+        }
+
+        internal static bool VerifySignatureLegacy(ReadOnlySpan<byte> message, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> pubkey, ECC.ECCurve curve, HashAlgorithm hashAlgorithm = HashAlgorithm.SHA256)
+        {
+            return VerifySignatureV0(message, signature, ECPoint.DecodePoint(pubkey, curve), hashAlgorithm);
         }
 
         internal static bool VerifySignatureFast(ReadOnlySpan<byte> message, ReadOnlySpan<byte> signature, ECPoint pubkey, HashAlgorithm hashAlgorithm = HashAlgorithm.SHA256)
