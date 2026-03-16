@@ -32,6 +32,7 @@ namespace Neo.Cryptography
             Hex.Decode("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F"));
 
         private static readonly ECDsaCache s_cacheECDsa = [];
+        private static readonly ECPointCache s_fastVerifySafeKeys = new(20000);
         private static readonly bool s_isOSX = RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
         private static readonly ECCurve s_secP256k1 = ECCurve.CreateFromFriendlyName("secP256k1");
 
@@ -193,6 +194,40 @@ namespace Neo.Cryptography
             return ecdsa.VerifyData(message, signature, hashAlg);
         }
 
+        internal static bool VerifySignatureFast(ReadOnlySpan<byte> message, ReadOnlySpan<byte> signature, ECPoint pubkey, HashAlgorithm hashAlgorithm = HashAlgorithm.SHA256)
+        {
+            if (signature.Length != 64) return false;
+
+            if (hashAlgorithm == HashAlgorithm.Keccak256 || (s_isOSX && pubkey.Curve == ECC.ECCurve.Secp256k1))
+            {
+                return VerifySignatureInternal(message, signature, pubkey, hashAlgorithm);
+            }
+
+            var ecdsa = CreateECDsa(pubkey);
+            var hashAlg =
+                hashAlgorithm == HashAlgorithm.SHA256 ? HashAlgorithmName.SHA256 :
+                throw new NotSupportedException($"The hash algorithm {nameof(hashAlgorithm)} is not supported.");
+            return ecdsa.VerifyData(message, signature, hashAlg);
+        }
+
+        private static bool CanUseFastVerify(ECPoint pubkey)
+        {
+            var encodedPoint = pubkey.EncodePoint(true);
+            if (s_fastVerifySafeKeys.TryGet(encodedPoint, out _))
+                return true;
+
+            try
+            {
+                _ = pubkey.Curve.BouncyCastleCurve.Curve.DecodePoint(pubkey.EncodePoint(false));
+                s_fastVerifySafeKeys.Add(pubkey);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         /// <summary>
         /// Create and cache ECDsa objects
         /// </summary>
@@ -227,20 +262,12 @@ namespace Neo.Cryptography
         {
             if (signature.Length != 64)
                 throw new FormatException("Signature size should be 64 bytes.");
-            // Use fast path (cached .NET ECDsa) for common case to avoid ~10x slowdown from BouncyCastle-only path (PR 4449 regression).
-            // On exception (e.g. invalid pubkey), return false to keep consistent cross-platform behavior (issue #4316).
-            if (hashAlgorithm == HashAlgorithm.SHA256 && !(s_isOSX && pubkey.Curve == ECC.ECCurve.Secp256k1))
-            {
-                try
-                {
-                    var ecdsa = CreateECDsa(pubkey);
-                    return ecdsa.VerifyData(message, signature, HashAlgorithmName.SHA256);
-                }
-                catch
-                {
-                    return false;
-                }
-            }
+
+            if (hashAlgorithm == HashAlgorithm.SHA256 &&
+                pubkey.Curve == ECC.ECCurve.Secp256r1 &&
+                CanUseFastVerify(pubkey))
+                return VerifySignatureFast(message, signature, pubkey, hashAlgorithm);
+
             return VerifySignatureInternal(message, signature, pubkey, hashAlgorithm);
         }
         /// <summary>
