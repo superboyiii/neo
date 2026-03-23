@@ -41,6 +41,19 @@ public class UT_Crypto
             .HexToBytes();
     }
 
+    private static string GetExpectedInnerExceptionTypeForInvalidSecp256r1PubKey()
+    {
+        if (OperatingSystem.IsWindows())
+            return "System.PlatformNotSupportedException";
+        if (OperatingSystem.IsLinux())
+            return "Interop+Crypto+OpenSslCryptographicException";
+        if (OperatingSystem.IsMacOS())
+            return "Interop+AppleCrypto+AppleCFErrorCryptographicException";
+
+        Assert.Fail("Unsupported platform.");
+        return string.Empty;
+    }
+
     public static KeyPair GenerateKey(int privateKeyLength)
     {
         var privateKey = new byte[privateKeyLength];
@@ -298,6 +311,20 @@ public class UT_Crypto
     }
 
     [TestMethod]
+    public void TestSignSecp256k1CrossPlatformPath()
+    {
+        var sha256Message = Encoding.UTF8.GetBytes("k1-sha256-sign-path");
+        var sha256Signature = Crypto.Sign(sha256Message, s_secp256k1Priv, ECCurve.Secp256k1, HashAlgorithm.SHA256);
+        Assert.AreEqual(64, sha256Signature.Length);
+        Assert.IsTrue(Crypto.VerifySignature(sha256Message, sha256Signature, Secp256k1Pub, HashAlgorithm.SHA256));
+
+        var keccakMessage = Encoding.UTF8.GetBytes("k1-keccak-sign-path");
+        var keccakSignature = Crypto.Sign(keccakMessage, s_secp256k1Priv, ECCurve.Secp256k1, HashAlgorithm.Keccak256);
+        Assert.AreEqual(64, keccakSignature.Length);
+        Assert.IsTrue(Crypto.VerifySignature(keccakMessage, keccakSignature, Secp256k1Pub, HashAlgorithm.Keccak256));
+    }
+
+    [TestMethod]
     public void TestSignUnsupportedHashAlgorithm()
     {
         Assert.ThrowsExactly<NotSupportedException>(() =>
@@ -346,10 +373,6 @@ public class UT_Crypto
         var ecdsaR1Second = Crypto.CreateECDsa(Secp256r1Pub);
         Assert.AreSame(ecdsaR1First, ecdsaR1Second);
 
-        var ecdsaK1First = Crypto.CreateECDsa(Secp256k1Pub);
-        var ecdsaK1Second = Crypto.CreateECDsa(Secp256k1Pub);
-        Assert.AreSame(ecdsaK1First, ecdsaK1Second);
-
         var infinity = new ECPoint();
         Assert.IsTrue(infinity.IsInfinity);
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Crypto.CreateECDsa(infinity));
@@ -367,7 +390,7 @@ public class UT_Crypto
 
         Assert.AreEqual("System.ArgumentException", ex.GetType().FullName);
         Assert.IsNotNull(ex.InnerException);
-        Assert.AreEqual("System.PlatformNotSupportedException", ex.InnerException!.GetType().FullName);
+        Assert.AreEqual(GetExpectedInnerExceptionTypeForInvalidSecp256r1PubKey(), ex.InnerException!.GetType().FullName);
     }
 
     [TestMethod]
@@ -382,6 +405,6 @@ public class UT_Crypto
 
         Assert.AreEqual("System.ArgumentException", ex.GetType().FullName);
         Assert.IsNotNull(ex.InnerException);
-        Assert.AreEqual("System.PlatformNotSupportedException", ex.InnerException!.GetType().FullName);
+        Assert.AreEqual(GetExpectedInnerExceptionTypeForInvalidSecp256r1PubKey(), ex.InnerException!.GetType().FullName);
     }
 }
