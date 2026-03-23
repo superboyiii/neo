@@ -123,6 +123,7 @@ jobs:
             "VerifySecp256k1Sha256FixedCompressed",
             "VerifySecp256k1Sha256FixedUncompressed",
             "VerifySecp256k1KeccakFixed",
+            "VerifySignatureSecp256r1InvalidButFormatValidPubkey",
             "CreateEcdsaSecp256r1",
             "CreateEcdsaSecp256k1",
         ]

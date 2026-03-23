@@ -74,11 +74,28 @@ public class UT_CryptoSignVerify
         return ECCurve.Secp256k1.G * privateKey;
     }
 
+    private static byte[] GetFormatValidButInvalidSecp256r1PubKey()
+    {
+        // Uncompressed 65-byte SEC1 encoding with x=1, y=1.
+        // The format is valid and DecodePoint accepts it, but the point is not on secp256r1.
+        return (
+            "04" +
+            "0000000000000000000000000000000000000000000000000000000000000001" +
+            "0000000000000000000000000000000000000000000000000000000000000001")
+            .HexToBytes();
+    }
+
     private sealed record CreateEcdsaResult(
         string Outcome,
         string? ExceptionType = null,
         string? InnerExceptionType = null,
         bool? CacheSameInstance = null);
+
+    private sealed record VerifySignatureResult(
+        string Outcome,
+        bool? ReturnValue = null,
+        string? ExceptionType = null,
+        string? InnerExceptionType = null);
 
     private sealed record CrossPlatformReport(
         string Platform,
@@ -94,6 +111,7 @@ public class UT_CryptoSignVerify
         bool VerifySecp256k1Sha256FixedCompressed,
         bool VerifySecp256k1Sha256FixedUncompressed,
         bool VerifySecp256k1KeccakFixed,
+        VerifySignatureResult VerifySignatureSecp256r1InvalidButFormatValidPubkey,
         CreateEcdsaResult CreateEcdsaSecp256r1,
         CreateEcdsaResult CreateEcdsaSecp256k1);
 
@@ -114,14 +132,38 @@ public class UT_CryptoSignVerify
         }
     }
 
+    private static VerifySignatureResult CaptureVerifySignatureResult(
+        byte[] message,
+        byte[] signature,
+        byte[] pubkey,
+        ECCurve curve,
+        HashAlgorithm hashAlgorithm)
+    {
+        try
+        {
+            return new VerifySignatureResult(
+                Outcome: "Return",
+                ReturnValue: Crypto.VerifySignature(message, signature, pubkey, curve, hashAlgorithm));
+        }
+        catch (Exception ex)
+        {
+            return new VerifySignatureResult(
+                Outcome: ex.GetType().Name,
+                ExceptionType: ex.GetType().FullName,
+                InnerExceptionType: ex.InnerException?.GetType().FullName);
+        }
+    }
+
     private static string WriteCrossPlatformReport()
     {
         var sha256Input = Encoding.UTF8.GetBytes("neo-crypto-signverify-sha256");
         var sha512Input = "test"u8.ToArray();
         var keccakInput = Encoding.UTF8.GetBytes("abc");
+        var invalidSecp256r1PubKey = GetFormatValidButInvalidSecp256r1PubKey();
         var secp256k1FixedCompressed = GetSecp256k1FixedSha256CompressedPubKey();
         var secp256k1FixedPoint = ECPoint.DecodePoint(secp256k1FixedCompressed, ECCurve.Secp256k1);
         var secp256k1FixedSignature = GetSecp256k1FixedSha256Signature();
+        var secp256r1Signature = Crypto.Sign(sha256Input, s_secp256r1Priv, ECCurve.Secp256r1, HashAlgorithm.SHA256);
 
         var report = new CrossPlatformReport(
             Platform: PlatformId,
@@ -167,6 +209,12 @@ public class UT_CryptoSignVerify
                 GetKeccakVerifySignature(),
                 GetKeccakVerifyPublicKey(),
                 HashAlgorithm.Keccak256),
+            VerifySignatureSecp256r1InvalidButFormatValidPubkey: CaptureVerifySignatureResult(
+                sha256Input,
+                secp256r1Signature,
+                invalidSecp256r1PubKey,
+                ECCurve.Secp256r1,
+                HashAlgorithm.SHA256),
             CreateEcdsaSecp256r1: CaptureCreateEcdsaResult(Secp256r1Pub),
             CreateEcdsaSecp256k1: CaptureCreateEcdsaResult(Secp256k1Pub));
 
