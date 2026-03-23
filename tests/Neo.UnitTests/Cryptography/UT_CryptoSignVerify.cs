@@ -1,27 +1,13 @@
 // Copyright (C) 2015-2026 The Neo Project.
 //
-// Cross-platform regression tests for Crypto.Sign, VerifySignature, CreateECDsa, GetMessageHash.
+// UT_CryptoSignVerify.cs file belongs to the neo project and is free
+// software distributed under the MIT software license, see the
+// accompanying file LICENSE in the main directory of the
+// repository or http://www.opensource.org/licenses/mit-license.php
+// for more details.
 //
-// PR #4506 (https://github.com/neo-project/neo/pull/4506) switches signing/verification to .NET ECDsa where
-// supported, with platform-specific behavior that must stay consistent in *outcomes* across OS builds:
-//
-// 1) Secp256k1 on macOS: Sign and VerifySignature use BouncyCastle (no OS ECDsa for this curve on Darwin).
-//    On Windows/Linux: native ECDsa + SignData/SignHash and VerifyData/VerifyHash via CreateECDsa cache.
-//    → Same fixed (message, signature, pubkey) must yield the same VerifySignature bool on every OS.
-//    → Sign() may return different 64-byte encodings (random k); do not compare raw signatures across machines.
-//
-// 2) Secp256r1: native ECDsa on all platforms (no macOS branch).
-//
-// 3) Hash mode split: SHA256 uses SignData/VerifyData; Keccak256 uses SignHash/VerifyHash on pre-hashed message.
-//    → Round-trip and fixed vectors cover both code paths.
-//
-// 4) CreateECDsa: in-memory FIFO cache of ECDsa public-key instances (native path). Invalid Q can throw
-//    ArgumentException (wrapping CryptographicException / PlatformNotSupportedException).
-//
-// 5) Prior issue #4449: inconsistent verify across platforms when mixing providers; this suite locks
-//    deterministic hashes and fixed ECDSA verification results as CI invariants.
-//
-// Run on Windows, Ubuntu, and macOS agents: dotnet test --filter "FullyQualifiedName~UT_CryptoSignVerify"
+// Redistribution and use in source and binary forms with or without
+// modifications are permitted.
 
 using Neo.Cryptography;
 using Neo.Extensions.IO;
@@ -37,6 +23,11 @@ namespace Neo.UnitTests.Cryptography;
 [TestClass]
 public class UT_CryptoSignVerify
 {
+    /// <summary>
+    /// Cross-platform regression tests for PR #4506 sign/verify changes.
+    /// These tests focus on places where different platforms may execute different crypto paths
+    /// but must still produce the same verification outcome and exception behavior.
+    /// </summary>
     private static readonly byte[] s_secp256r1Priv =
         "aabbccdd11223344556677889900112233445566778899001122334455667788".HexToBytes();
 
