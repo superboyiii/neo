@@ -47,12 +47,12 @@ jobs:
         path: ~/.nuget/packages
         key         : ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: ${{ runner.os }}-nuget-
-    - name: Check Format (*.cs)
-      if: matrix.os == 'ubuntu-latest'
-      run: dotnet format --verify-no-changes --verbosity diagnostic
     - name: Generate crypto cross-platform report
       run: |
         dotnet test tests/Neo.UnitTests/Neo.UnitTests.csproj --filter "FullyQualifiedName~CrossPlatform_Report_Pr4506CryptoBehavior" -p:GITHUB_ACTIONS=true
+    - name: Check Format (*.cs)
+      if: matrix.os == 'ubuntu-latest'
+      run: dotnet format --verify-no-changes --verbosity diagnostic
     - name: Test (ALL OS)
       if: matrix.os != 'ubuntu-latest'
       run: |
