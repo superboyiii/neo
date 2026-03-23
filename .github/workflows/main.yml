@@ -47,6 +47,9 @@ jobs:
         path: ~/.nuget/packages
         key         : ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
         restore-keys: ${{ runner.os }}-nuget-
+    - name: Generate crypto cross-platform report
+      run: |
+        dotnet test tests/Neo.UnitTests/Neo.UnitTests.csproj --filter "FullyQualifiedName~CrossPlatform_Report_Pr4506CryptoBehavior" -p:GITHUB_ACTIONS=true
     - name: Check Format (*.cs)
       if: matrix.os == 'ubuntu-latest'
       run: dotnet format --verify-no-changes --verbosity diagnostic
@@ -59,6 +62,13 @@ jobs:
       run: |
         find tests -name *.csproj | xargs -I % dotnet add % package coverlet.msbuild
         dotnet test /p:GITHUB_ACTIONS=true /p:CollectCoverage=true /p:CoverletOutput='${{ github.workspace }}/TestResults/coverage/' /p:MergeWith='${{ github.workspace }}/TestResults/coverage/coverage.json' /p:CoverletOutputFormat=\"lcov,json\" -m:1
+    - name: Upload crypto cross-platform report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: crypto-sign-verify-report-${{ matrix.os }}
+        path: ${{ github.workspace }}/TestResults/cross-platform/UT_CryptoSignVerify.*.json
+        if-no-files-found: warn
     - name: Codecov
       if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v5
@@ -66,6 +76,98 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ${{ github.workspace }}/TestResults/coverage/coverage.info
         fail_ci_if_error: false
+
+  Compare-CryptoSignVerify:
+    needs: [Test]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download crypto reports
+      uses: actions/download-artifact@v4
+      with:
+        pattern: crypto-sign-verify-report-*
+        path: ${{ github.workspace }}/cross-platform-reports
+        merge-multiple: true
+    - name: Compare crypto reports
+      shell: python
+      run: |
+        import json
+        import os
+        import sys
+        from pathlib import Path
+
+        report_dir = Path(os.environ["GITHUB_WORKSPACE"]) / "cross-platform-reports"
+        report_files = sorted(report_dir.glob("UT_CryptoSignVerify.*.json"))
+        if len(report_files) < 3:
+            print(f"Expected 3 reports, found {len(report_files)}: {[str(p) for p in report_files]}")
+            sys.exit(1)
+
+        reports = {}
+        for path in report_files:
+            data = json.loads(path.read_text())
+            reports[data["Platform"]] = data
+
+        required = ["windows", "linux", "macos"]
+        missing = [platform for platform in required if platform not in reports]
+        if missing:
+            print(f"Missing platform reports: {missing}")
+            sys.exit(1)
+
+        invariant_fields = [
+            "Sha256Hex",
+            "Sha512Hex",
+            "Keccak256Hex",
+            "VerifySecp256r1Sha256RoundTrip",
+            "VerifySecp256r1KeccakRoundTrip",
+            "VerifySecp256k1Sha256RoundTrip",
+            "VerifySecp256k1KeccakRoundTrip",
+            "VerifySecp256k1Sha256FixedCompressed",
+            "VerifySecp256k1Sha256FixedUncompressed",
+            "VerifySecp256k1KeccakFixed",
+            "VerifySignatureSecp256r1InvalidButFormatValidPubkey",
+            "VerifyWithECDsaSecp256r1Valid",
+            "VerifyWithECDsaInvalidNamedCurveHash",
+            "VerifyWithECDsaInvalidButFormatValidPubkey",
+            "VerifyWithEd25519Valid",
+            "VerifyWithEd25519InvalidPubkeyLength",
+            "VerifyWithEd25519InvalidSignatureLength",
+            "CreateEcdsaSecp256r1",
+            "CreateEcdsaSecp256k1",
+        ]
+
+        summary_lines = ["## Crypto Cross-Platform Report", "", "| Field | windows | linux | macos |", "| --- | --- | --- | --- |"]
+        failures = []
+
+        for field in invariant_fields:
+            values = [reports[platform][field] for platform in required]
+            summary_lines.append(f"| {field} | {values[0]} | {values[1]} | {values[2]} |")
+            if len({json.dumps(value, sort_keys=True) for value in values}) != 1:
+                failures.append(f"Invariant field differs across platforms: {field} -> {values}")
+
+        summary_lines.extend([
+            "",
+            "### Raw platform result objects",
+            "",
+            "| Field | windows | linux | macos |",
+            "| --- | --- | --- | --- |",
+        ])
+
+        raw_result_fields = [
+            "CreateEcdsaSecp256r1",
+            "CreateEcdsaSecp256k1",
+        ]
+
+        for field in raw_result_fields:
+            values = [reports[platform][field] for platform in required]
+            summary_lines.append(
+                f"| {field} | `{json.dumps(values[0], sort_keys=True)}` | `{json.dumps(values[1], sort_keys=True)}` | `{json.dumps(values[2], sort_keys=True)}` |"
+            )
+
+        summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+        summary_path.write_text("\n".join(summary_lines))
+
+        if failures:
+            print("\n".join(failures))
+            sys.exit(1)
 
   PublishMyGet:
     if: github.ref == 'refs/heads/master' && startsWith(github.repository, 'neo-project/')
