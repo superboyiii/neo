@@ -11,6 +11,7 @@
 
 using Neo.Cryptography;
 using Neo.Extensions.IO;
+using Neo.SmartContract.Native;
 using Neo.Wallets;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -74,6 +75,11 @@ public class UT_CryptoSignVerify
         return ECCurve.Secp256k1.G * privateKey;
     }
 
+    private static readonly byte[] s_ed25519PrivateKey =
+        "0102030405060708090A0B0C0D0E0F101112131415161718191A1B1C1D1E1F20".HexToBytes();
+
+    private static byte[] GetEd25519PublicKey() => Ed25519.GetPublicKey(s_ed25519PrivateKey);
+
     private static byte[] GetFormatValidButInvalidSecp256r1PubKey()
     {
         // Uncompressed 65-byte SEC1 encoding with x=1, y=1.
@@ -112,6 +118,12 @@ public class UT_CryptoSignVerify
         bool VerifySecp256k1Sha256FixedUncompressed,
         bool VerifySecp256k1KeccakFixed,
         VerifySignatureResult VerifySignatureSecp256r1InvalidButFormatValidPubkey,
+        VerifySignatureResult VerifyWithECDsaSecp256r1Valid,
+        VerifySignatureResult VerifyWithECDsaInvalidNamedCurveHash,
+        VerifySignatureResult VerifyWithECDsaInvalidButFormatValidPubkey,
+        VerifySignatureResult VerifyWithEd25519Valid,
+        VerifySignatureResult VerifyWithEd25519InvalidPubkeyLength,
+        VerifySignatureResult VerifyWithEd25519InvalidSignatureLength,
         CreateEcdsaResult CreateEcdsaSecp256r1,
         CreateEcdsaResult CreateEcdsaSecp256k1);
 
@@ -154,6 +166,47 @@ public class UT_CryptoSignVerify
         }
     }
 
+    private static VerifySignatureResult CaptureVerifyWithECDsaResult(
+        byte[] message,
+        byte[] pubkey,
+        byte[] signature,
+        NamedCurveHash curveHash)
+    {
+        try
+        {
+            return new VerifySignatureResult(
+                Outcome: "Return",
+                ReturnValue: CryptoLib.VerifyWithECDsa(message, pubkey, signature, curveHash));
+        }
+        catch (Exception ex)
+        {
+            return new VerifySignatureResult(
+                Outcome: ex.GetType().Name,
+                ExceptionType: ex.GetType().FullName,
+                InnerExceptionType: ex.InnerException?.GetType().FullName);
+        }
+    }
+
+    private static VerifySignatureResult CaptureVerifyWithEd25519Result(
+        byte[] message,
+        byte[] pubkey,
+        byte[] signature)
+    {
+        try
+        {
+            return new VerifySignatureResult(
+                Outcome: "Return",
+                ReturnValue: CryptoLib.VerifyWithEd25519(message, pubkey, signature));
+        }
+        catch (Exception ex)
+        {
+            return new VerifySignatureResult(
+                Outcome: ex.GetType().Name,
+                ExceptionType: ex.GetType().FullName,
+                InnerExceptionType: ex.InnerException?.GetType().FullName);
+        }
+    }
+
     private static string WriteCrossPlatformReport()
     {
         var sha256Input = Encoding.UTF8.GetBytes("neo-crypto-signverify-sha256");
@@ -164,6 +217,9 @@ public class UT_CryptoSignVerify
         var secp256k1FixedPoint = ECPoint.DecodePoint(secp256k1FixedCompressed, ECCurve.Secp256k1);
         var secp256k1FixedSignature = GetSecp256k1FixedSha256Signature();
         var secp256r1Signature = Crypto.Sign(sha256Input, s_secp256r1Priv, ECCurve.Secp256r1, HashAlgorithm.SHA256);
+        var ed25519Message = Encoding.UTF8.GetBytes("neo-ed25519");
+        var ed25519PublicKey = GetEd25519PublicKey();
+        var ed25519Signature = Ed25519.Sign(s_ed25519PrivateKey, ed25519Message);
 
         var report = new CrossPlatformReport(
             Platform: PlatformId,
@@ -215,6 +271,33 @@ public class UT_CryptoSignVerify
                 invalidSecp256r1PubKey,
                 ECCurve.Secp256r1,
                 HashAlgorithm.SHA256),
+            VerifyWithECDsaSecp256r1Valid: CaptureVerifyWithECDsaResult(
+                sha256Input,
+                Secp256r1Pub.EncodePoint(true),
+                secp256r1Signature,
+                NamedCurveHash.secp256r1SHA256),
+            VerifyWithECDsaInvalidNamedCurveHash: CaptureVerifyWithECDsaResult(
+                sha256Input,
+                Secp256r1Pub.EncodePoint(true),
+                secp256r1Signature,
+                (NamedCurveHash)24),
+            VerifyWithECDsaInvalidButFormatValidPubkey: CaptureVerifyWithECDsaResult(
+                sha256Input,
+                invalidSecp256r1PubKey,
+                secp256r1Signature,
+                NamedCurveHash.secp256r1SHA256),
+            VerifyWithEd25519Valid: CaptureVerifyWithEd25519Result(
+                ed25519Message,
+                ed25519PublicKey,
+                ed25519Signature),
+            VerifyWithEd25519InvalidPubkeyLength: CaptureVerifyWithEd25519Result(
+                ed25519Message,
+                Array.Empty<byte>(),
+                ed25519Signature),
+            VerifyWithEd25519InvalidSignatureLength: CaptureVerifyWithEd25519Result(
+                ed25519Message,
+                ed25519PublicKey,
+                Array.Empty<byte>()),
             CreateEcdsaSecp256r1: CaptureCreateEcdsaResult(Secp256r1Pub),
             CreateEcdsaSecp256k1: CaptureCreateEcdsaResult(Secp256k1Pub));
 

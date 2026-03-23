@@ -124,6 +124,12 @@ jobs:
             "VerifySecp256k1Sha256FixedUncompressed",
             "VerifySecp256k1KeccakFixed",
             "VerifySignatureSecp256r1InvalidButFormatValidPubkey",
+            "VerifyWithECDsaSecp256r1Valid",
+            "VerifyWithECDsaInvalidNamedCurveHash",
+            "VerifyWithECDsaInvalidButFormatValidPubkey",
+            "VerifyWithEd25519Valid",
+            "VerifyWithEd25519InvalidPubkeyLength",
+            "VerifyWithEd25519InvalidSignatureLength",
             "CreateEcdsaSecp256r1",
             "CreateEcdsaSecp256k1",
         ]
