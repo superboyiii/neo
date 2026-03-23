@@ -12,6 +12,9 @@
 using Neo.Cryptography;
 using Neo.Extensions.IO;
 using Neo.Wallets;
+using System.Text.Json;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using ECCurve = Neo.Cryptography.ECC.ECCurve;
@@ -37,6 +40,143 @@ public class UT_CryptoSignVerify
     private static ECPoint Secp256r1Pub => ECCurve.Secp256r1.G * s_secp256r1Priv;
 
     private static ECPoint Secp256k1Pub => ECCurve.Secp256k1.G * s_secp256k1Priv;
+
+    private static string PlatformId =>
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" :
+        RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? "macos" :
+        RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "linux" :
+        "unknown";
+
+    private static byte[] GetSecp256k1FixedSha256Signature() =>
+        ("b8cba1ff42304d74d083e87706058f59cdd4f755b995926d2cd80a734c5a3c37" +
+         "e4583bfd4339ac762c1c91eee3782660a6baf62cd29e407eccd3da3e9de55a02").HexToBytes();
+
+    private static byte[] GetSecp256k1FixedSha256CompressedPubKey() =>
+        "03661b86d54eb3a8e7ea2399e0db36ab65753f95fff661da53ae0121278b881ad0".HexToBytes();
+
+    private static byte[] GetKeccakVerifyMessage()
+    {
+        var messageBody = Encoding.UTF8.GetBytes("It's a small(er) world");
+        return new byte[] { 0x19 }
+            .Concat(Encoding.UTF8.GetBytes($"Ethereum Signed Message:\n{messageBody.Length}"))
+            .Concat(messageBody)
+            .ToArray();
+    }
+
+    private static byte[] GetKeccakVerifySignature() =>
+        "9328da16089fcba9bececa81663203989f2df5fe1faa6291a45381c81bd17f76".HexToBytes()
+            .Concat("139c6d6b623b42da56557e5e734a43dc83345ddfadec52cbe24d0cc64f550793".HexToBytes())
+            .ToArray();
+
+    private static ECPoint GetKeccakVerifyPublicKey()
+    {
+        var privateKey = "1234567890123456789012345678901234567890123456789012345678901234".HexToBytes();
+        return ECCurve.Secp256k1.G * privateKey;
+    }
+
+    private sealed record CreateEcdsaResult(
+        string Outcome,
+        string? ExceptionType = null,
+        string? InnerExceptionType = null,
+        bool? CacheSameInstance = null);
+
+    private sealed record CrossPlatformReport(
+        string Platform,
+        string OsDescription,
+        string Framework,
+        string Sha256Hex,
+        string Sha512Hex,
+        string Keccak256Hex,
+        bool VerifySecp256r1Sha256RoundTrip,
+        bool VerifySecp256r1KeccakRoundTrip,
+        bool VerifySecp256k1Sha256RoundTrip,
+        bool VerifySecp256k1KeccakRoundTrip,
+        bool VerifySecp256k1Sha256FixedCompressed,
+        bool VerifySecp256k1Sha256FixedUncompressed,
+        bool VerifySecp256k1KeccakFixed,
+        CreateEcdsaResult CreateEcdsaSecp256r1,
+        CreateEcdsaResult CreateEcdsaSecp256k1);
+
+    private static CreateEcdsaResult CaptureCreateEcdsaResult(ECPoint pubkey)
+    {
+        try
+        {
+            var first = Crypto.CreateECDsa(pubkey);
+            var second = Crypto.CreateECDsa(pubkey);
+            return new CreateEcdsaResult("Success", CacheSameInstance: ReferenceEquals(first, second));
+        }
+        catch (ArgumentException ex)
+        {
+            return new CreateEcdsaResult(
+                Outcome: "ArgumentException",
+                ExceptionType: ex.GetType().FullName,
+                InnerExceptionType: ex.InnerException?.GetType().FullName);
+        }
+    }
+
+    private static string WriteCrossPlatformReport()
+    {
+        var sha256Input = Encoding.UTF8.GetBytes("neo-crypto-signverify-sha256");
+        var sha512Input = "test"u8.ToArray();
+        var keccakInput = Encoding.UTF8.GetBytes("abc");
+        var secp256k1FixedCompressed = GetSecp256k1FixedSha256CompressedPubKey();
+        var secp256k1FixedPoint = ECPoint.DecodePoint(secp256k1FixedCompressed, ECCurve.Secp256k1);
+        var secp256k1FixedSignature = GetSecp256k1FixedSha256Signature();
+
+        var report = new CrossPlatformReport(
+            Platform: PlatformId,
+            OsDescription: RuntimeInformation.OSDescription,
+            Framework: RuntimeInformation.FrameworkDescription,
+            Sha256Hex: Convert.ToHexString(Crypto.GetMessageHash(sha256Input, HashAlgorithm.SHA256)),
+            Sha512Hex: Convert.ToHexString(Crypto.GetMessageHash(sha512Input, HashAlgorithm.SHA512)),
+            Keccak256Hex: Convert.ToHexString(Crypto.GetMessageHash(keccakInput, HashAlgorithm.Keccak256)),
+            VerifySecp256r1Sha256RoundTrip: Crypto.VerifySignature(
+                sha256Input,
+                Crypto.Sign(sha256Input, s_secp256r1Priv, ECCurve.Secp256r1, HashAlgorithm.SHA256),
+                Secp256r1Pub,
+                HashAlgorithm.SHA256),
+            VerifySecp256r1KeccakRoundTrip: Crypto.VerifySignature(
+                keccakInput,
+                Crypto.Sign(keccakInput, s_secp256r1Priv, ECCurve.Secp256r1, HashAlgorithm.Keccak256),
+                Secp256r1Pub,
+                HashAlgorithm.Keccak256),
+            VerifySecp256k1Sha256RoundTrip: Crypto.VerifySignature(
+                sha256Input,
+                Crypto.Sign(sha256Input, s_secp256k1Priv, ECCurve.Secp256k1, HashAlgorithm.SHA256),
+                Secp256k1Pub,
+                HashAlgorithm.SHA256),
+            VerifySecp256k1KeccakRoundTrip: Crypto.VerifySignature(
+                keccakInput,
+                Crypto.Sign(keccakInput, s_secp256k1Priv, ECCurve.Secp256k1, HashAlgorithm.Keccak256),
+                Secp256k1Pub,
+                HashAlgorithm.Keccak256),
+            VerifySecp256k1Sha256FixedCompressed: Crypto.VerifySignature(
+                Encoding.Default.GetBytes("中文"),
+                secp256k1FixedSignature,
+                secp256k1FixedCompressed,
+                ECCurve.Secp256k1,
+                HashAlgorithm.SHA256),
+            VerifySecp256k1Sha256FixedUncompressed: Crypto.VerifySignature(
+                Encoding.Default.GetBytes("中文"),
+                secp256k1FixedSignature,
+                secp256k1FixedPoint.EncodePoint(false),
+                ECCurve.Secp256k1,
+                HashAlgorithm.SHA256),
+            VerifySecp256k1KeccakFixed: Crypto.VerifySignature(
+                GetKeccakVerifyMessage(),
+                GetKeccakVerifySignature(),
+                GetKeccakVerifyPublicKey(),
+                HashAlgorithm.Keccak256),
+            CreateEcdsaSecp256r1: CaptureCreateEcdsaResult(Secp256r1Pub),
+            CreateEcdsaSecp256k1: CaptureCreateEcdsaResult(Secp256k1Pub));
+
+        var workspace = Environment.GetEnvironmentVariable("GITHUB_WORKSPACE") ?? Directory.GetCurrentDirectory();
+        var outputDir = Path.Combine(workspace, "TestResults", "cross-platform");
+        Directory.CreateDirectory(outputDir);
+        var outputPath = Path.Combine(outputDir, $"UT_CryptoSignVerify.{PlatformId}.json");
+        File.WriteAllText(outputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+        return outputPath;
+    }
 
     #region GetMessageHash — deterministic inputs (no OS crypto)
 
@@ -276,6 +416,13 @@ public class UT_CryptoSignVerify
     #endregion
 
     #region CreateECDsa — native cache (Secp256r1 / Secp256k1 when used); macOS Secp256k1 verify may bypass cache
+
+    [TestMethod]
+    public void CrossPlatform_Report_Pr4506CryptoBehavior()
+    {
+        var reportPath = WriteCrossPlatformReport();
+        Assert.IsTrue(File.Exists(reportPath));
+    }
 
     [TestMethod]
     public void CreateECDsa_Secp256r1_SamePublicKey_ReturnsSameCachedInstance()
