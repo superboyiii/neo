@@ -11,6 +11,7 @@
 
 using Neo.Cryptography;
 using Neo.Extensions.IO;
+using Neo.SmartContract.Native;
 using Neo.Wallets;
 using System.Security.Cryptography;
 using System.Text;
@@ -30,6 +31,15 @@ public class UT_Crypto
         "7177f0d04c79fa0b8c91fe90c1cf1d44772d1fba6e5eb9b281a22cd3aafb51fe".HexToBytes();
     private static ECPoint Secp256r1Pub => ECCurve.Secp256r1.G * s_secp256r1Priv;
     private static ECPoint Secp256k1Pub => ECCurve.Secp256k1.G * s_secp256k1Priv;
+
+    private static byte[] GetFormatValidButInvalidSecp256r1PubKey()
+    {
+        return (
+            "04" +
+            "0000000000000000000000000000000000000000000000000000000000000001" +
+            "0000000000000000000000000000000000000000000000000000000000000001")
+            .HexToBytes();
+    }
 
     public static KeyPair GenerateKey(int privateKeyLength)
     {
@@ -343,5 +353,35 @@ public class UT_Crypto
         var infinity = new ECPoint();
         Assert.IsTrue(infinity.IsInfinity);
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => Crypto.CreateECDsa(infinity));
+    }
+
+    [TestMethod]
+    public void TestVerifySignatureInvalidButFormatValidPubkey()
+    {
+        var message = Encoding.UTF8.GetBytes("neo-crypto-signverify-sha256");
+        var signature = Crypto.Sign(message, s_secp256r1Priv, ECCurve.Secp256r1, HashAlgorithm.SHA256);
+        var invalidPubKey = GetFormatValidButInvalidSecp256r1PubKey();
+
+        var ex = Assert.ThrowsExactly<ArgumentException>(() =>
+            Crypto.VerifySignature(message, signature, invalidPubKey, ECCurve.Secp256r1, HashAlgorithm.SHA256));
+
+        Assert.AreEqual("System.ArgumentException", ex.GetType().FullName);
+        Assert.IsNotNull(ex.InnerException);
+        Assert.AreEqual("System.PlatformNotSupportedException", ex.InnerException!.GetType().FullName);
+    }
+
+    [TestMethod]
+    public void TestVerifyWithECDsaInvalidButFormatValidPubkey()
+    {
+        var message = Encoding.UTF8.GetBytes("neo-crypto-signverify-sha256");
+        var signature = Crypto.Sign(message, s_secp256r1Priv, ECCurve.Secp256r1, HashAlgorithm.SHA256);
+        var invalidPubKey = GetFormatValidButInvalidSecp256r1PubKey();
+
+        var ex = Assert.ThrowsExactly<ArgumentException>(() =>
+            CryptoLib.VerifyWithECDsa(message, invalidPubKey, signature, NamedCurveHash.secp256r1SHA256));
+
+        Assert.AreEqual("System.ArgumentException", ex.GetType().FullName);
+        Assert.IsNotNull(ex.InnerException);
+        Assert.AreEqual("System.PlatformNotSupportedException", ex.InnerException!.GetType().FullName);
     }
 }
